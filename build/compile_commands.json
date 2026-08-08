@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/Users/Dell/Documents/Videojuegos propios/Proyectos/EMMA/EMMA/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe  @CMakeFiles/Example.dir/includes_CXX.rsp -g -o CMakeFiles\\Example.dir\\MECA\\Example1.cpp.obj -c \"C:\\Users\\Dell\\Documents\\Videojuegos propios\\Proyectos\\EMMA\\EMMA\\MECA\\Example1.cpp\"",
+  "file": "C:/Users/Dell/Documents/Videojuegos propios/Proyectos/EMMA/EMMA/MECA/Example1.cpp",
+  "output": "CMakeFiles/Example.dir/MECA/Example1.cpp.obj"
+}
+]

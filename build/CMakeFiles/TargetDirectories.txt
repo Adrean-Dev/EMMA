@@ -1,3 +1,0 @@
-C:/Users/Dell/Documents/Videojuegos propios/Proyectos/EMMA/EMMA/build/CMakeFiles/Example.dir
-C:/Users/Dell/Documents/Videojuegos propios/Proyectos/EMMA/EMMA/build/CMakeFiles/edit_cache.dir
-C:/Users/Dell/Documents/Videojuegos propios/Proyectos/EMMA/EMMA/build/CMakeFiles/rebuild_cache.dir

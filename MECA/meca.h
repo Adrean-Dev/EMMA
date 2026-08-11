@@ -47,6 +47,11 @@ namespace meca {
         }
     };
 
+    enum filter {
+        AND,
+        OR
+    };
+
 
 
     /*
@@ -91,7 +96,7 @@ namespace meca {
                 __internal::bitelement old = __internal::bitmasks.at(id);
                 __internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index) = __internal::bitgroups.at(old.bitmask.to_ulong()).back();
                 __internal::bitgroups.at(old.bitmask.to_ulong()).pop_back();
-                if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > 0) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
+                if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > old.index) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
             } //Swap & pop
             __internal::bitmasks.at(id).bitmask.set(registry.component_id);
             if(__internal::bitgroups.size() <= __internal::bitmasks.at(id).bitmask.to_ulong()) __internal::bitgroups.resize(__internal::bitmasks.at(id).bitmask.to_ulong()+1);
@@ -129,7 +134,7 @@ namespace meca {
             __internal::bitelement old = __internal::bitmasks.at(id);
             __internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index) = __internal::bitgroups.at(old.bitmask.to_ulong()).back();
             __internal::bitgroups.at(old.bitmask.to_ulong()).pop_back();
-            if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > 0) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
+            if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > old.index) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
             //Swap & pop
 
             __internal::bitmasks.at(id).bitmask.reset(registry.component_id);
@@ -140,19 +145,34 @@ namespace meca {
 
 
     //Gives a simple iterator (std::vector) of components (references to component registry).
-    #define component_iterator(registry) registry.dense
+    template<typename T>
+    std::vector<T>& component_iterator(componentRegistry<T> &registry) {
+        return registry.dense;
+    }
 
 
     /*
     Alternative to for: it gives support for multiple component registry iteration.
+    @param filtro: It's the type of filtering wanted for getting the components, indicated by logical gates.
     @param function: A function (it can be lambda) that operates with the components needed.
     @param registries: All the component registries that you want to iterate (AND looping).
     */
     template<typename... Registries, typename F>
-    void filter_for(F &&function, Registries&... registries) {
+    void filter_for(filter filtro, F &&function, Registries&... registries) {
         size_t mask = ((0b1 << registries.component_id) | ...);
-        for(entityID &id : __internal::bitgroups.at(mask)) {
-            function(registries.dense.at(registries.sparse.at(id))...);
+        switch(filtro) {
+            case AND:
+            for(entityID &id : __internal::bitgroups.at(mask)) {
+                function(registries.dense.at(registries.sparse.at(id))...);
+            }
+            break;
+            case OR:
+            std::bitset<MAX_COMPONENTS> bitmask = mask;
+            for(size_t i = mask; (i < __internal::bitgroups.size()) && (bitmask.test(registries.component_id) && ...); i++) {
+                for(entityID &id : __internal::bitgroups.at(i)) {
+                    function(registries.dense.at(registries.sparse.at(id))...);
+                }
+            }
         }
     }
 }

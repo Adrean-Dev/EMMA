@@ -10,11 +10,11 @@
 #if __has_include("logger.h")
 #include <logger.h>
 #else
-#define Log(level, sys, msg)
-#define INFO
-#define WARNING
-#define ERROR
-#define FATAL
+#define Logger(level, sys, msg)
+#define LOGGER_INFO
+#define LOGGER_WARNING
+#define LOGGER_ERROR
+#define LOGGER_FATAL
 #endif
 
 //Logger sys
@@ -144,7 +144,7 @@ namespace meca {
             if(__internal::bitgroups.size() <= __internal::bitmasks.at(id).bitmask.to_ulong()) __internal::bitgroups.resize(__internal::bitmasks.at(id).bitmask.to_ulong()+1);
             __internal::bitmasks.at(id).index = __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).size();
             __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).push_back(id);
-        } else Log(WARNING, MECA_SYS, "Fail creating component! The component already exists.");
+        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component! The component already exists.");
     }
 
 
@@ -157,7 +157,7 @@ namespace meca {
         if(__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
             return &registry.dense.at(registry.sparse.at(id));
         } else {
-            Log(WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
+            Logger(LOGGER_WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
             return nullptr;
         }
     }
@@ -182,7 +182,7 @@ namespace meca {
             __internal::bitmasks.at(id).bitmask.reset(registry.component_id);
             __internal::bitmasks.at(id).index = __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).size();
             __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).push_back(id);
-        } else Log(WARNING, MECA_SYS, "Fail deleting component! The component doesn't exists.");
+        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component! The component doesn't exists.");
     }
 
 

@@ -49,14 +49,14 @@ int main() {
         AND_I,
         [](Position &pos, Health &hp) {
             //Output some info with Logger!
-            Log(INFO, MECA_SYS, "This character has a position of ("<<pos.x<<", "<<pos.y<<") and "<<hp.value<<" of HP.");
+            Logger(LOGGER_INFO, MECA_SYS, "This character has a position of ("<<pos.x<<", "<<pos.y<<") and "<<hp.value<<" of HP.");
         },
         positions, healths
     );
 
     //Use your range based for to loop over one component registry.
-    Log(INFO, MECA_SYS, "Here is the list of points gained in the match:");
+    Logger(LOGGER_INFO, MECA_SYS, "Here is the list of points gained in the match:");
     for(Rank &rank : component_iterator(ranks)) {
-        Log(INFO, MECA_SYS, rank.points);
+        Logger(LOGGER_INFO, MECA_SYS, rank.points);
     }
 }

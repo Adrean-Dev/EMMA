@@ -28,7 +28,7 @@ int main() {
 
     auto end_creating = TimeShot();
 
-    Log(INFO, "MAIN", elapsed_time(start_creating, end_creating, MICRO_SECONDS)); //Between 5000-7500 microseconds
+    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_creating, end_creating, LOGGER_MICRO_SECONDS)); //Between 5000-7500 microseconds
 
 
     auto start_system = TimeShot();
@@ -48,5 +48,5 @@ int main() {
 
     auto end_system = TimeShot();
 
-    Log(INFO, "MAIN", elapsed_time(start_system, end_system, MICRO_SECONDS)); //Between 400-800 microseconds
+    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_system, end_system, LOGGER_MICRO_SECONDS)); //Between 400-800 microseconds
 }

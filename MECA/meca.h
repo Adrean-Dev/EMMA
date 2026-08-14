@@ -29,10 +29,10 @@ namespace meca {
         class SparseSet {
             private:
             std::vector<size_t> sparse;
-            std::vector<T> dense;
             std::vector<size_t> compact;
 
             public:
+            std::vector<T> dense;
             ~SparseSet() = default;
 
             void insert(size_t index, T element) {
@@ -80,8 +80,7 @@ namespace meca {
 
     template<typename T>
     struct componentRegistry {
-        std::vector<entityID> sparse;
-        std::vector<T> dense;
+        __internal::SparseSet<T> sparse_set;
         int component_id = -1;
 
         componentRegistry() {
@@ -102,11 +101,11 @@ namespace meca {
     ################
     */
 
-    //Pre-allocates memory for entities.
+    //Pre-allocates memory for entities. RE-DO
     #define Reserve_entity_cap(capacity) __internal::bitmasks.reserve(capacity)
 
 
-    /*
+    /* RE-DO
     Creates a new entity in a free id.
     @returns An id for new entity.
     */
@@ -127,11 +126,8 @@ namespace meca {
     template<typename T>
     void create_component(entityID id, T component, componentRegistry<T> &registry) {
         if(!__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
-            //Creating Component
-            if(id >= registry.sparse.size()) registry.sparse.resize(id+1);
-            registry.sparse.at(id) = registry.dense.size();
-            component.id = id;
-            registry.dense.push_back(component);
+            //Inserting Component
+            registry.sparse_set.insert(id, component);
 
             //Bits
             if(__internal::bitmasks.at(id).bitmask.any()) {
@@ -154,12 +150,9 @@ namespace meca {
     */
     template<typename T>
     T* get_component(entityID id, componentRegistry<T> &registry) {
-        if(__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
-            return &registry.dense.at(registry.sparse.at(id));
-        } else {
-            Logger(LOGGER_WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
-            return nullptr;
-        }
+        T *component = registry.sparse_set.search(id);
+        if(component == nullptr) Logger(LOGGER_WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
+        return component;
     }
 
 
@@ -168,9 +161,7 @@ namespace meca {
     void delete_component(entityID id, componentRegistry<T> &registry) {
         if(__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
             //Deleting Component
-            registry.dense.at(registry.sparse.at(id)) = registry.dense.back();
-            registry.sparse.at(registry.dense.back().id) = registry.sparse.at(id);
-            registry.dense.pop_back();
+            registry.sparse_set.del(id);
 
             //Bits
             __internal::bitelement old = __internal::bitmasks.at(id);
@@ -189,7 +180,7 @@ namespace meca {
     //Gives a simple iterator (std::vector) of components (references to component registry).
     template<typename T>
     std::vector<T>& component_iterator(componentRegistry<T> &registry) {
-        return registry.dense;
+        return registry.sparse_set.dense;
     }
 
 
@@ -205,14 +196,14 @@ namespace meca {
         switch(filtro) {
             case AND_E:
             for(entityID &id : __internal::bitgroups.at(mask)) {
-                function(registries.dense.at(registries.sparse.at(id))...);
+                function(*registries.sparse_set.search(id)...);
             }
             break;
             case AND_I:
             std::bitset<MAX_COMPONENTS> bitmask = mask;
             for(size_t i = mask; (i < __internal::bitgroups.size()) && (bitmask.test(registries.component_id) && ...); i++) {
                 for(entityID &id : __internal::bitgroups.at(i)) {
-                    function(registries.dense.at(registries.sparse.at(id))...);
+                    function(*registries.sparse_set.search(id)...);
                 }
             }
         }

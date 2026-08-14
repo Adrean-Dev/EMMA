@@ -24,6 +24,48 @@ namespace meca {
 
 
     namespace __internal {
+
+        template<typename T>
+        class SparseSet {
+            private:
+            std::vector<size_t> sparse;
+            std::vector<T> dense;
+            std::vector<size_t> compact;
+
+            public:
+            ~SparseSet() = default;
+
+            void insert(size_t index, T element) {
+                if(index >= sparse.size()) sparse.resize(index+1, -1);
+                sparse[index] = dense.size();
+                dense.push_back(element);
+                compact.push_back(index);
+            }
+
+            void del(size_t index) {
+                if((index < sparse.size()) && (sparse[index] < dense.size())) {
+                    dense[sparse[index]] = dense.back();
+                    sparse[compact.back()] = sparse[index];
+                    sparse[index] = -1;
+                    dense.pop_back();
+                    compact.pop_back();
+                }
+            }
+
+            T* search(size_t index) {
+                if((index < sparse.size()) && (sparse[index] < dense.size())) {
+                    return &dense[sparse[index]];
+                } else return nullptr;
+            }
+
+            void clear() {
+                sparse.clear();
+                dense.clear();
+                compact.clear();
+                sparse.shrink_to_fit();
+            }
+        };
+
         struct bitelement {
             std::bitset<MAX_COMPONENTS> bitmask;
             size_t index;
@@ -48,8 +90,8 @@ namespace meca {
     };
 
     enum filter {
-        AND,
-        OR
+        AND_E,
+        AND_I
     };
 
 
@@ -161,12 +203,12 @@ namespace meca {
     void filter_for(filter filtro, F &&function, Registries&... registries) {
         size_t mask = ((0b1 << registries.component_id) | ...);
         switch(filtro) {
-            case AND:
+            case AND_E:
             for(entityID &id : __internal::bitgroups.at(mask)) {
                 function(registries.dense.at(registries.sparse.at(id))...);
             }
             break;
-            case OR:
+            case AND_I:
             std::bitset<MAX_COMPONENTS> bitmask = mask;
             for(size_t i = mask; (i < __internal::bitgroups.size()) && (bitmask.test(registries.component_id) && ...); i++) {
                 for(entityID &id : __internal::bitgroups.at(i)) {

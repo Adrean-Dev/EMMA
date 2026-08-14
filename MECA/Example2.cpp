@@ -38,7 +38,7 @@ int main() {
     }
 
     meca::filter_for(
-        meca::AND,
+        meca::AND_E,
         [](Health &hp, Position &pos) {
             pos.x += hp.value;
             pos.y = pos.x*2;

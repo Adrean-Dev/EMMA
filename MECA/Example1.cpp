@@ -46,7 +46,7 @@ int main() {
 
     //Use filter_for to loop over more than one component registry.
     filter_for(
-        OR,
+        AND_I,
         [](Position &pos, Health &hp) {
             //Output some info with Logger!
             Log(INFO, MECA_SYS, "This character has a position of ("<<pos.x<<", "<<pos.y<<") and "<<hp.value<<" of HP.");

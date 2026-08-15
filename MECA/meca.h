@@ -5,6 +5,7 @@
 
 
 #include <vector>
+#include <unordered_set>
 #include <bitset>
 
 #if __has_include("logger.h")
@@ -28,12 +29,17 @@ namespace meca {
         template<typename T>
         class SparseSet {
             private:
-            std::vector<size_t> sparse;
             std::vector<size_t> compact;
 
             public:
+            std::vector<size_t> sparse;
             std::vector<T> dense;
-            ~SparseSet() = default;
+            SparseSet() = default;
+            SparseSet(size_t reserve_n) {
+                sparse.reserve(reserve_n);
+                dense.reserve(reserve_n);
+                compact.reserve(reserve_n);
+            }
 
             void insert(size_t index, T element) {
                 if(index >= sparse.size()) sparse.resize(index+1, -1);
@@ -58,21 +64,22 @@ namespace meca {
                 } else return nullptr;
             }
 
+            bool has(size_t index) {
+                return ((index < sparse.size()) && (sparse[index] < dense.size())) ? true : false;
+            }
+
             void clear() {
                 sparse.clear();
                 dense.clear();
                 compact.clear();
                 sparse.shrink_to_fit();
+                dense.shrink_to_fit();
+                compact.shrink_to_fit();
             }
         };
 
-        struct bitelement {
-            std::bitset<MAX_COMPONENTS> bitmask;
-            size_t index;
-        };
-
-        std::vector<bitelement> bitmasks;
-        std::vector<std::vector<entityID>> bitgroups;
+        SparseSet<std::bitset<MAX_COMPONENTS>> bitmasks;
+        SparseSet<std::unordered_set<entityID>> bitgroups;
 
         int componentType_count = 0;
     }
@@ -101,17 +108,16 @@ namespace meca {
     ################
     */
 
-    //Pre-allocates memory for entities. RE-DO
-    #define Reserve_entity_cap(capacity) __internal::bitmasks.reserve(capacity)
-
-
     /* RE-DO
     Creates a new entity in a free id.
     @returns An id for new entity.
     */
     entityID create_entity() {
-        __internal::bitmasks.push_back({0});
-        return __internal::bitmasks.size()-1;
+        size_t id = __internal::bitmasks.dense.size();
+        __internal::bitmasks.insert(id, 0);
+        if(!__internal::bitgroups.has(0)) __internal::bitgroups.insert(0, {});
+        __internal::bitgroups.search(0)->insert(id);
+        return id;
     }
 
 
@@ -125,22 +131,17 @@ namespace meca {
     //Creates a new component for an entity.
     template<typename T>
     void create_component(entityID id, T component, componentRegistry<T> &registry) {
-        if(!__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
+        if(!registry.sparse_set.has(id) && (__internal::bitmasks.dense.size() > id)) {
             //Inserting Component
             registry.sparse_set.insert(id, component);
 
             //Bits
-            if(__internal::bitmasks.at(id).bitmask.any()) {
-                __internal::bitelement old = __internal::bitmasks.at(id);
-                __internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index) = __internal::bitgroups.at(old.bitmask.to_ulong()).back();
-                __internal::bitgroups.at(old.bitmask.to_ulong()).pop_back();
-                if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > old.index) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
-            } //Swap & pop
-            __internal::bitmasks.at(id).bitmask.set(registry.component_id);
-            if(__internal::bitgroups.size() <= __internal::bitmasks.at(id).bitmask.to_ulong()) __internal::bitgroups.resize(__internal::bitmasks.at(id).bitmask.to_ulong()+1);
-            __internal::bitmasks.at(id).index = __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).size();
-            __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).push_back(id);
-        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component! The component already exists.");
+            std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
+            __internal::bitgroups.search(mask->to_ullong())->erase(id);
+            mask->set(registry.component_id);
+            if(!__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.insert(mask->to_ullong(), {});
+            __internal::bitgroups.search(mask->to_ullong())->insert(id);
+        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component!");
     }
 
 
@@ -159,21 +160,17 @@ namespace meca {
     //Deletes a component from an entity.
     template<typename T>
     void delete_component(entityID id, componentRegistry<T> &registry) {
-        if(__internal::bitmasks.at(id).bitmask.test(registry.component_id)) {
+        if(registry.sparse_set.has(id) && (__internal::bitmasks.dense.size() > id)) {
             //Deleting Component
             registry.sparse_set.del(id);
 
             //Bits
-            __internal::bitelement old = __internal::bitmasks.at(id);
-            __internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index) = __internal::bitgroups.at(old.bitmask.to_ulong()).back();
-            __internal::bitgroups.at(old.bitmask.to_ulong()).pop_back();
-            if(__internal::bitgroups.at(old.bitmask.to_ulong()).size() > old.index) __internal::bitmasks.at(__internal::bitgroups.at(old.bitmask.to_ulong()).at(old.index)).index = old.index;
-            //Swap & pop
-
-            __internal::bitmasks.at(id).bitmask.reset(registry.component_id);
-            __internal::bitmasks.at(id).index = __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).size();
-            __internal::bitgroups.at(__internal::bitmasks.at(id).bitmask.to_ulong()).push_back(id);
-        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component! The component doesn't exists.");
+            std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
+            __internal::bitgroups.search(mask->to_ullong())->erase(id);
+            mask->reset(registry.component_id);
+            //if(!__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.insert(mask->to_ullong(), {});
+            __internal::bitgroups.search(mask->to_ullong())->insert(id);
+        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component!");
     }
 
 
@@ -188,21 +185,21 @@ namespace meca {
     Alternative to for: it gives support for multiple component registry iteration.
     @param filtro: It's the type of filtering wanted for getting the components, indicated by logical gates.
     @param function: A function (it can be lambda) that operates with the components needed.
-    @param registries: All the component registries that you want to iterate (AND looping).
+    @param registries: All the component registries that you want to iterate.
     */
     template<typename... Registries, typename F>
     void filter_for(filter filtro, F &&function, Registries&... registries) {
         size_t mask = ((0b1 << registries.component_id) | ...);
         switch(filtro) {
             case AND_E:
-            for(entityID &id : __internal::bitgroups.at(mask)) {
+            for(entityID id : *__internal::bitgroups.search(mask)) {
                 function(*registries.sparse_set.search(id)...);
             }
             break;
             case AND_I:
             std::bitset<MAX_COMPONENTS> bitmask = mask;
-            for(size_t i = mask; (i < __internal::bitgroups.size()) && (bitmask.test(registries.component_id) && ...); i++) {
-                for(entityID &id : __internal::bitgroups.at(i)) {
+            for(size_t i = mask; i < __internal::bitgroups.sparse.size(); i = (i+1)|mask) {
+                for(entityID id : *__internal::bitgroups.search(i)) {
                     function(*registries.sparse_set.search(id)...);
                 }
             }

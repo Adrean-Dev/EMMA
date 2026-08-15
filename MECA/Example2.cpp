@@ -4,33 +4,44 @@
 
 struct Health {
     int value = 100;
-    meca::entityID id;
 };
 
 struct Position {
     int x = 0;
     int y = 0;
-    meca::entityID id;
 };
 
 
-int main() {
-    auto start_creating = TimeShot();
-
+int main() {    
     meca::componentRegistry<Health> healths;
     meca::componentRegistry<Position> positions;
 
+    //Creating entities
+    auto start_creating = TimeShot();
+
     for(int i = 0; i < 10000; i++) {
         meca::create_entity();
-        meca::create_component(i, {}, healths);
-        meca::create_component(i, {}, positions);
     }
 
     auto end_creating = TimeShot();
 
-    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_creating, end_creating, LOGGER_MICRO_SECONDS)); //Between 5000-7500 microseconds
+    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_creating, end_creating, LOGGER_MICRO_SECONDS));
 
 
+    //Creating components
+    auto start_comps = TimeShot();
+
+    for(int i = 0; i < 10000; i++) {
+        meca::create_component(i, {}, healths);
+        meca::create_component(i, {}, positions);
+    }
+
+    auto end_comps = TimeShot();
+
+    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_comps, end_comps, LOGGER_MICRO_SECONDS));
+
+
+    //System tests
     auto start_system = TimeShot();
 
     for(Health &hp : meca::component_iterator(healths)) {
@@ -48,5 +59,5 @@ int main() {
 
     auto end_system = TimeShot();
 
-    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_system, end_system, LOGGER_MICRO_SECONDS)); //Between 400-800 microseconds
+    Logger(LOGGER_INFO, "MAIN", elapsed_time(start_system, end_system, LOGGER_MICRO_SECONDS));
 }

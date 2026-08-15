@@ -8,18 +8,15 @@ using namespace meca;
 struct Position {
     int x = 0;
     int y = 0;
-    entityID id; //Important!!! for all components struct it needs an entityID named id.
 };
 
 struct Health {
     int value = 100;
-    entityID id;
 };
 
 struct Rank {
     char grade = 'Z';
     int points = 0;
-    entityID id;
 };
 
 

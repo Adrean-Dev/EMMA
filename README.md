@@ -2,16 +2,16 @@
 Engine of Minimal Modules &amp; Abstractions.
 
 ### 🤔 What is EMMA?
-EMMA is a complete library for video game development, including a lot of 'modules' within it.
+EMMA is a type of engine for video game development, including a lot of libraries within it.
 
-The modules are some tinier libraries and files that represents each one a major system.
+The engine have libraries and files that represents each one a major system.
 
-**Here is the list of the modules in EMMA:**
+**Here is the list of the libraries in EMMA:**
 - Logger
 - MECA
 
 ### ⭐ What is the purpose of EMMA?
-EMMA is designed to be an easy-to-use and light library for c++.
+EMMA is designed to be an easy-to-use and light engine for c++.
 
 ---
 ## Modules

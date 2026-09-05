@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <unordered_set>
+#include <utility>
 #include <bitset>
 
 #if __has_include("logger.h")
@@ -35,23 +36,30 @@ namespace meca {
             std::vector<size_t> sparse;
             std::vector<T> dense;
             SparseSet() = default;
-            SparseSet(size_t reserve_n) {
-                sparse.reserve(reserve_n);
-                dense.reserve(reserve_n);
-                compact.reserve(reserve_n);
+
+            void reserve(size_t size) {
+                sparse.reserve(size);
+                dense.reserve(size);
+                compact.reserve(size);
+                sparse.resize(size, -1);
             }
 
-            void insert(size_t index, T element) {
-                if(index >= sparse.size()) sparse.resize(index+1, -1);
-                sparse[index] = dense.size();
-                dense.push_back(element);
-                compact.push_back(index);
+            inline void insert(size_t index, T&& element) {
+                if((index >= sparse.size()) || (sparse[index] == -1)) {
+                    if(index >= sparse.size()) sparse.resize(index+1, -1);
+                    sparse[index] = dense.size();
+                    dense.push_back(std::move(element));
+                    compact.push_back(std::move(index));
+                } else {
+                    dense[sparse[index]] = element;
+                }
             }
 
-            void del(size_t index) {
-                if((index < sparse.size()) && (sparse[index] < dense.size())) {
+            inline void del(size_t index) {
+                if((index < sparse.size()) && (sparse[index] != -1)) {
                     dense[sparse[index]] = dense.back();
                     sparse[compact.back()] = sparse[index];
+                    compact[sparse[index]] = compact.back();
                     sparse[index] = -1;
                     dense.pop_back();
                     compact.pop_back();
@@ -59,13 +67,13 @@ namespace meca {
             }
 
             T* search(size_t index) {
-                if((index < sparse.size()) && (sparse[index] < dense.size())) {
+                if((index < sparse.size()) && (sparse[index] != -1)) {
                     return &dense[sparse[index]];
                 } else return nullptr;
             }
 
-            bool has(size_t index) {
-                return ((index < sparse.size()) && (sparse[index] < dense.size())) ? true : false;
+            inline bool has(size_t index) {
+                return ((index < sparse.size()) && (sparse[index] != -1));
             }
 
             void clear() {
@@ -81,19 +89,21 @@ namespace meca {
         SparseSet<std::bitset<MAX_COMPONENTS>> bitmasks;
         SparseSet<std::unordered_set<entityID>> bitgroups;
 
+        size_t entity_count = 0;
         int componentType_count = 0;
     }
 
 
     template<typename T>
-    struct componentRegistry {
-        __internal::SparseSet<T> sparse_set;
+    class componentRegistry : public __internal::SparseSet<T> {
+        public:
         int component_id = -1;
 
         componentRegistry() {
             if(__internal::componentType_count < MAX_COMPONENTS) component_id = __internal::componentType_count, __internal::componentType_count++;
         }
     };
+
 
     enum filter {
         AND_E,
@@ -113,11 +123,8 @@ namespace meca {
     @returns An id for new entity.
     */
     entityID create_entity() {
-        size_t id = __internal::bitmasks.dense.size();
-        __internal::bitmasks.insert(id, 0);
-        if(!__internal::bitgroups.has(0)) __internal::bitgroups.insert(0, {});
-        __internal::bitgroups.search(0)->insert(id);
-        return id;
+        __internal::entity_count++;
+        return __internal::entity_count-1;
     }
 
 
@@ -130,14 +137,15 @@ namespace meca {
 
     //Creates a new component for an entity.
     template<typename T>
-    void create_component(entityID id, T component, componentRegistry<T> &registry) {
-        if(!registry.sparse_set.has(id) && (__internal::bitmasks.dense.size() > id)) {
+    void create_component(entityID id, T&& component, componentRegistry<T> &registry) {
+        if(__internal::entity_count > id) {
             //Inserting Component
-            registry.sparse_set.insert(id, component);
+            registry.insert(id, std::forward<T>(component));
 
             //Bits
+            if(!__internal::bitmasks.has(id)) __internal::bitmasks.insert(id, 0);
             std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
-            __internal::bitgroups.search(mask->to_ullong())->erase(id);
+            if(__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.search(mask->to_ullong())->erase(id);
             mask->set(registry.component_id);
             if(!__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.insert(mask->to_ullong(), {});
             __internal::bitgroups.search(mask->to_ullong())->insert(id);
@@ -151,7 +159,7 @@ namespace meca {
     */
     template<typename T>
     T* get_component(entityID id, componentRegistry<T> &registry) {
-        T *component = registry.sparse_set.search(id);
+        T *component = registry.search(id);
         if(component == nullptr) Logger(LOGGER_WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
         return component;
     }
@@ -160,9 +168,9 @@ namespace meca {
     //Deletes a component from an entity.
     template<typename T>
     void delete_component(entityID id, componentRegistry<T> &registry) {
-        if(registry.sparse_set.has(id) && (__internal::bitmasks.dense.size() > id)) {
+        if(registry.has(id) && (__internal::entity_count > id)) {
             //Deleting Component
-            registry.sparse_set.del(id);
+            registry.del(id);
 
             //Bits
             std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
@@ -177,7 +185,7 @@ namespace meca {
     //Gives a simple iterator (std::vector) of components (references to component registry).
     template<typename T>
     std::vector<T>& component_iterator(componentRegistry<T> &registry) {
-        return registry.sparse_set.dense;
+        return registry.dense;
     }
 
 
@@ -193,14 +201,14 @@ namespace meca {
         switch(filtro) {
             case AND_E:
             for(entityID id : *__internal::bitgroups.search(mask)) {
-                function(*registries.sparse_set.search(id)...);
+                function(*registries.search(id)...);
             }
             break;
             case AND_I:
             std::bitset<MAX_COMPONENTS> bitmask = mask;
             for(size_t i = mask; i < __internal::bitgroups.sparse.size(); i = (i+1)|mask) {
                 for(entityID id : *__internal::bitgroups.search(i)) {
-                    function(*registries.sparse_set.search(id)...);
+                    function(*registries.search(id)...);
                 }
             }
         }

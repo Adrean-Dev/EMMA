@@ -16,6 +16,9 @@ int main() {
     meca::componentRegistry<Health> healths;
     meca::componentRegistry<Position> positions;
 
+    healths.reserve(10000);
+    positions.reserve(10000);
+
     //Creating entities
     auto start_creating = TimeShot();
 

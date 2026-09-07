@@ -5,7 +5,7 @@
 
 
 #include <vector>
-#include <unordered_set>
+#include <tuple>
 #include <utility>
 #include <bitset>
 
@@ -29,12 +29,10 @@ namespace meca {
 
         template<typename T>
         class SparseSet {
-            private:
-            std::vector<size_t> compact;
-
             public:
             std::vector<size_t> sparse;
             std::vector<T> dense;
+            std::vector<size_t> compact;
             SparseSet() = default;
 
             void reserve(size_t size) {
@@ -87,7 +85,6 @@ namespace meca {
         };
 
         SparseSet<std::bitset<MAX_COMPONENTS>> bitmasks;
-        SparseSet<std::unordered_set<entityID>> bitgroups;
 
         size_t entity_count = 0;
         int componentType_count = 0;
@@ -137,18 +134,18 @@ namespace meca {
 
     //Creates a new component for an entity.
     template<typename T>
-    void create_component(entityID id, T&& component, componentRegistry<T> &registry) {
+    inline void create_component(entityID id, T&& component, componentRegistry<T> &registry) {
         if(__internal::entity_count > id) {
             //Inserting Component
             registry.insert(id, std::forward<T>(component));
 
             //Bits
-            if(!__internal::bitmasks.has(id)) __internal::bitmasks.insert(id, 0);
             std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
-            if(__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.search(mask->to_ullong())->erase(id);
-            mask->set(registry.component_id);
-            if(!__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.insert(mask->to_ullong(), {});
-            __internal::bitgroups.search(mask->to_ullong())->insert(id);
+            if(mask == nullptr) {
+                __internal::bitmasks.insert(id, (0b1<<registry.component_id));
+            } else {
+                mask->set(registry.component_id);
+            }
         } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component!");
     }
 
@@ -168,16 +165,15 @@ namespace meca {
     //Deletes a component from an entity.
     template<typename T>
     void delete_component(entityID id, componentRegistry<T> &registry) {
-        if(registry.has(id) && (__internal::entity_count > id)) {
+        if(__internal::entity_count > id) {
             //Deleting Component
             registry.del(id);
 
             //Bits
             std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
-            __internal::bitgroups.search(mask->to_ullong())->erase(id);
-            mask->reset(registry.component_id);
-            //if(!__internal::bitgroups.has(mask->to_ullong())) __internal::bitgroups.insert(mask->to_ullong(), {});
-            __internal::bitgroups.search(mask->to_ullong())->insert(id);
+            if(mask != nullptr) {
+                mask->reset(registry.component_id);
+            }
         } else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component!");
     }
 
@@ -197,18 +193,35 @@ namespace meca {
     */
     template<typename... Registries, typename F>
     void filter_for(filter filtro, F &&function, Registries&... registries) {
-        size_t mask = ((0b1 << registries.component_id) | ...);
-        switch(filtro) {
-            case AND_E:
-            for(entityID id : *__internal::bitgroups.search(mask)) {
-                function(*registries.search(id)...);
+        auto regs = std::forward_as_tuple(registries...);
+
+        //Getting the minimum register
+        size_t min = -1;
+        entityID *min_id = 0;
+        auto find_minimun = [&](auto& r) {
+            if(r.dense.size() < min) {
+                min = r.dense.size();
+                min_id = r.compact.data();
             }
-            break;
-            case AND_I:
-            std::bitset<MAX_COMPONENTS> bitmask = mask;
-            for(size_t i = mask; i < __internal::bitgroups.sparse.size(); i = (i+1)|mask) {
-                for(entityID id : *__internal::bitgroups.search(i)) {
-                    function(*registries.search(id)...);
+        };
+        std::apply([&](auto&... reg) {(find_minimun(reg), ...);}, regs);
+
+        //Actual system iteration
+        for(size_t i = 0; i < min; i++) {
+            bool has_all = (registries.has(min_id[i]) && ...);
+            switch(filtro) {
+                case AND_E:
+                {
+                    size_t mask = ((0b1 << registries.component_id) | ...);
+                    std::bitset<MAX_COMPONENTS> *bitmask = __internal::bitmasks.search(min_id[i]);
+                    if((bitmask != nullptr) && (bitmask->to_ullong() == mask)) {
+                        function(registries.dense[registries.sparse[min_id[i]]]...);
+                    }
+                }
+                break;
+                case AND_I:
+                if(has_all) {
+                    function(registries.dense[registries.sparse[min_id[i]]]...);
                 }
             }
         }

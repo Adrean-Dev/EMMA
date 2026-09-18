@@ -9,6 +9,7 @@ The engine have libraries and files that represents each one a major system.
 **Here is the list of the libraries in EMMA:**
 - Logger
 - MECA
+- Pokit
 
 ### ⭐ What is the purpose of EMMA?
 EMMA is designed to be an easy-to-use and light engine for c++.
@@ -21,6 +22,25 @@ EMMA is designed to be an easy-to-use and light engine for c++.
 Logger will give you a helping hand! and you are going to know at any moment what's going on in your c++ programs.
 
 This is a simple header-only library that helps you with the debugging.
+
+#### How you use it?
+At the moment, Logger gives you the option to output important information through the terminal and to benchmark your code.
+
+First you have `Logger`, our signature dish! and it serves for outputting info:
+```cpp
+Logger(LOGGER_INFO, "MAIN", "Hello world!");
+```
+This outputs something like this:
+```
+[INFO]: {MAIN} Hello world! 
+```
+> As you can see, the 'MAIN' part is only a name for your current execution flow; you can name it anything you want.
+
+For `Logger` there are four flags that you can use to categorize the output:
+- `LOGGER_INFO`: Used to provide general information.
+- `LOGGER_WARNING`: Used to provide information of something that could create glitches.
+- `LOGGER_ERROR`: Used to provide information of something that could create bugs.
+- `LOGGER_FATAL`: Used to provide information of something that could/will crash the program.
 
 ### 🧍 MECA
 **Are you tired of always having a lot of entities that your game cannot handle?**

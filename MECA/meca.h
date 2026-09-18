@@ -4,8 +4,8 @@
 
 
 
+#include <memory>
 #include <vector>
-#include <tuple>
 #include <utility>
 #include <bitset>
 
@@ -26,85 +26,82 @@ namespace meca {
 
 
     namespace __internal {
+        class ISparseRegistry {
+            public:
+            size_t dense_size = 0;
+
+            virtual ~ISparseRegistry() = default;
+            virtual void del(entityID id) = 0;
+        };
 
         template<typename T>
-        class SparseSet {
+        class SparseRegistry : public ISparseRegistry {
             public:
-            std::vector<size_t> sparse;
+            std::vector<entityID> sparse;
             std::vector<T> dense;
-            std::vector<size_t> compact;
-            SparseSet() = default;
+            std::vector<entityID> compact;
 
-            void reserve(size_t size) {
-                sparse.reserve(size);
-                dense.reserve(size);
-                compact.reserve(size);
-                sparse.resize(size, -1);
-            }
-
-            inline void insert(size_t index, T&& element) {
-                if((index >= sparse.size()) || (sparse[index] == -1)) {
-                    if(index >= sparse.size()) sparse.resize(index+1, -1);
-                    sparse[index] = dense.size();
-                    dense.push_back(std::move(element));
-                    compact.push_back(std::move(index));
+            inline void insert(entityID id, T&& component) {
+                if(!has(id)) {
+                    if(id >= sparse.size()) sparse.resize(id+1, -1);
+                    sparse[id] = dense.size();
+                    dense.push_back(std::move(component));
+                    compact.push_back(std::move(id));
+                    dense_size++;
                 } else {
-                    dense[sparse[index]] = element;
+                    dense[sparse[id]] = component;
                 }
             }
 
-            inline void del(size_t index) {
-                if((index < sparse.size()) && (sparse[index] != -1)) {
-                    dense[sparse[index]] = dense.back();
-                    sparse[compact.back()] = sparse[index];
-                    compact[sparse[index]] = compact.back();
-                    sparse[index] = -1;
+            void del(entityID id) override {
+                if(has(id)) {
+                    dense[sparse[id]] = dense.back();
+                    sparse[compact.back()] = sparse[id];
+                    compact[sparse[id]] = compact.back();
+                    sparse[id] = -1;
                     dense.pop_back();
                     compact.pop_back();
+                    dense_size--;
                 }
             }
 
-            T* search(size_t index) {
-                if((index < sparse.size()) && (sparse[index] != -1)) {
-                    return &dense[sparse[index]];
-                } else return nullptr;
+            T* get(entityID id) {
+                return (has(id)) ? &dense[sparse[id]] : nullptr;
             }
 
-            inline bool has(size_t index) {
-                return ((index < sparse.size()) && (sparse[index] != -1));
-            }
-
-            void clear() {
-                sparse.clear();
-                dense.clear();
-                compact.clear();
-                sparse.shrink_to_fit();
-                dense.shrink_to_fit();
-                compact.shrink_to_fit();
+            constexpr bool has(entityID id) {
+                return ((id < sparse.size()) && (sparse[id] != -1));
             }
         };
 
-        SparseSet<std::bitset<MAX_COMPONENTS>> bitmasks;
 
+        //Components data structures
+        std::vector<std::unique_ptr<ISparseRegistry>> registry;
+        std::vector<std::bitset<MAX_COMPONENTS>> bitmasks;
+
+        //Counts
         size_t entity_count = 0;
-        int componentType_count = 0;
+        size_t componentType_count = 0;
+
+        //This gets a unique id from a datatype
+        template<typename T>
+        size_t get_componentType_id() {
+            static size_t id = componentType_count++;
+            return id;
+        }
+
+        //This gets a raw component from a type (without handling non-existance)
+        template<typename T>
+        T& get_component_byType(entityID id) {
+            SparseRegistry<T> *comp_reg = static_cast<SparseRegistry<T>*>(registry[get_componentType_id<T>()].get());
+            return comp_reg->dense[comp_reg->sparse[id]];
+        }
     }
 
 
-    template<typename T>
-    class componentRegistry : public __internal::SparseSet<T> {
-        public:
-        int component_id = -1;
-
-        componentRegistry() {
-            if(__internal::componentType_count < MAX_COMPONENTS) component_id = __internal::componentType_count, __internal::componentType_count++;
-        }
-    };
-
-
     enum filter {
-        AND_E,
-        AND_I
+        AND_Excluded,
+        AND_Included
     };
 
 
@@ -115,13 +112,26 @@ namespace meca {
     ################
     */
 
-    /* RE-DO
+    /*
     Creates a new entity in a free id.
     @returns An id for new entity.
     */
     entityID create_entity() {
         __internal::entity_count++;
         return __internal::entity_count-1;
+    }
+
+
+    //Resets an entity (deletes all its components).
+    inline void reset_entity(entityID id) {
+        if((id < __internal::entity_count) && (id < __internal::bitmasks.size()) && (__internal::bitmasks[id].any())) {
+            for(size_t i = 0; i < MAX_COMPONENTS; i++) {
+                if(__internal::bitmasks[id].test(i)) {
+                    __internal::registry[i].get()->del(id);
+                }
+            }
+            __internal::bitmasks[id].reset();
+        }
     }
 
 
@@ -134,96 +144,125 @@ namespace meca {
 
     //Creates a new component for an entity.
     template<typename T>
-    inline void create_component(entityID id, T&& component, componentRegistry<T> &registry) {
-        if(__internal::entity_count > id) {
-            //Inserting Component
-            registry.insert(id, std::forward<T>(component));
+    inline void create_component(entityID id, T&& component) {
+        if(id < __internal::entity_count) {
+            size_t reg_id = __internal::get_componentType_id<T>();
+            if(reg_id >= __internal::registry.size()) __internal::registry.push_back(std::make_unique<__internal::SparseRegistry<T>>());
+            
+            //Registry
+            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
+            comp_reg->insert(id, std::forward<T>(component));
 
             //Bits
-            std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
-            if(mask == nullptr) {
-                __internal::bitmasks.insert(id, (0b1<<registry.component_id));
+            if(id >= __internal::bitmasks.size()) {
+                __internal::bitmasks.resize(id+1, 0);
+                __internal::bitmasks[id].set(reg_id);
             } else {
-                mask->set(registry.component_id);
+                __internal::bitmasks[id].set(reg_id);
             }
-        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component!");
+        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component! Invalid entityID: " << id);
     }
 
 
     /*
-    Gets the reference to an entity's component.
+    Gets the pointer to an entity's component.
     @returns An entity component or nullptr (if component not found).
     */
     template<typename T>
-    T* get_component(entityID id, componentRegistry<T> &registry) {
-        T *component = registry.search(id);
-        if(component == nullptr) Logger(LOGGER_WARNING, MECA_SYS, "Component search failed! The component doesn't exists.");
-        return component;
+    T* get_component(entityID id) {
+        if(id >= __internal::entity_count) return nullptr;
+
+        size_t reg_id = __internal::get_componentType_id<T>();
+        __internal::SparseRegistry<T> *comp_reg = (reg_id < __internal::registry.size()) ? static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get()) : nullptr;
+        if(comp_reg == nullptr) return nullptr;
+
+        return comp_reg->get(id);
     }
 
 
     //Deletes a component from an entity.
     template<typename T>
-    void delete_component(entityID id, componentRegistry<T> &registry) {
-        if(__internal::entity_count > id) {
-            //Deleting Component
-            registry.del(id);
+    inline void delete_component(entityID id) {
+        size_t reg_id = __internal::get_componentType_id<T>();
+        if((id < __internal::entity_count) && (reg_id < __internal::registry.size())) {
+            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
 
             //Bits
-            std::bitset<MAX_COMPONENTS> *mask = __internal::bitmasks.search(id);
-            if(mask != nullptr) {
-                mask->reset(registry.component_id);
-            }
-        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component!");
-    }
+            if(comp_reg->has(id)) __internal::bitmasks[id].reset(reg_id);
 
-
-    //Gives a simple iterator (std::vector) of components (references to component registry).
-    template<typename T>
-    std::vector<T>& component_iterator(componentRegistry<T> &registry) {
-        return registry.dense;
+            //Registry
+            comp_reg->del(id);
+        }  else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component! Invalid component type or entityID: " << id);
     }
 
 
     /*
-    Alternative to for: it gives support for multiple component registry iteration.
+    Gives a simple pointer to a vector of components (references to component registry).
+    @returns A pointer to the internal vector of a component registry or nullptr (if not found).
+    */
+    template<typename T>
+    std::vector<T>* component_iterator() {
+        size_t reg_id = __internal::get_componentType_id<T>();
+        if(reg_id < __internal::registry.size()) {
+            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
+            return (comp_reg->dense.size() > 0) ? &comp_reg->dense : nullptr;
+        }
+        return nullptr;
+    }
+
+
+    /*
+    Alternative to for: it gives support for multiple component iteration.
     @param filtro: It's the type of filtering wanted for getting the components, indicated by logical gates.
     @param function: A function (it can be lambda) that operates with the components needed.
-    @param registries: All the component registries that you want to iterate.
     */
-    template<typename... Registries, typename F>
-    void filter_for(filter filtro, F &&function, Registries&... registries) {
-        auto regs = std::forward_as_tuple(registries...);
+    template<typename... Components, typename F>
+    void filter_for(filter filtro, F &&function) {
+        //Getting the minimum component registry size
+        size_t min_id = 0; //The good stuff
 
-        //Getting the minimum register
         size_t min = -1;
-        entityID *min_id = 0;
-        auto find_minimun = [&](auto& r) {
-            if(r.dense.size() < min) {
-                min = r.dense.size();
-                min_id = r.compact.data();
-            }
-        };
-        std::apply([&](auto&... reg) {(find_minimun(reg), ...);}, regs);
+        (
+            [&]() {
+                size_t reg_id = __internal::get_componentType_id<Components>();
+                if(__internal::registry[reg_id].get()->dense_size < min) {
+                    min = __internal::registry[reg_id].get()->dense_size;
+                    min_id = reg_id;
+                }
+            }(), ...
+        );
 
-        //Actual system iteration
-        for(size_t i = 0; i < min; i++) {
-            bool has_all = (registries.has(min_id[i]) && ...);
-            switch(filtro) {
-                case AND_E:
-                {
-                    size_t mask = ((0b1 << registries.component_id) | ...);
-                    std::bitset<MAX_COMPONENTS> *bitmask = __internal::bitmasks.search(min_id[i]);
-                    if((bitmask != nullptr) && (bitmask->to_ullong() == mask)) {
-                        function(registries.dense[registries.sparse[min_id[i]]]...);
+
+        std::bitset<MAX_COMPONENTS> mask; //Bitmask of the components for this loop
+        (mask.set(__internal::get_componentType_id<Components>()), ...);
+
+        //This executes the function directly with the entity id
+        auto execute_func = [&](entityID &id) {
+            function(__internal::get_component_byType<Components>(id)...);
+        };
+
+        //Looping through the components using a condition
+        (
+            [&]() {
+                if(__internal::get_componentType_id<Components>() == min_id) {
+                    __internal::SparseRegistry<Components>* comp_reg = static_cast<__internal::SparseRegistry<Components>*>(__internal::registry[min_id].get());
+                    for(entityID &id : comp_reg->compact) {
+                        switch(filtro) {
+                            case AND_Excluded:
+                            if(__internal::bitmasks[id] == mask) {
+                                execute_func(id);
+                            }
+                            break;
+                            
+                            case AND_Included:
+                            if((__internal::bitmasks[id] & mask) == mask) {
+                                execute_func(id);
+                            }
+                            break;
+                        }
                     }
                 }
-                break;
-                case AND_I:
-                if(has_all) {
-                    function(registries.dense[registries.sparse[min_id[i]]]...);
-                }
-            }
-        }
+            }(), ...
+        );
     }
 }

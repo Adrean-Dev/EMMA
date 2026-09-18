@@ -21,39 +21,33 @@ struct Rank {
 
 
 int main() {
-    //Create registries for your components! It's a way of grouping some components together.
-    componentRegistry<Position> positions;
-    componentRegistry<Health> healths;
-    componentRegistry<Rank> ranks;
-
     //Create your first entity B)
     entityID mahoma = create_entity();
     //Another nice guy
     entityID juan = create_entity();
 
     //Give your entities some components, registering them in your favorite componentRegistry.
-    create_component(mahoma, {100,200}, positions);
-    create_component(mahoma, {999}, healths);
+    create_component<Position>(mahoma, {100,200});
+    create_component<Health>(mahoma, {999});
 
-    create_component(juan, {5, 10}, positions);
-    create_component(juan, {20}, healths);
-    create_component(juan, {'A', 1000}, ranks);
+    create_component<Position>(juan, {5, 10});
+    create_component<Health>(juan, {20});
+    create_component<Rank>(juan, {'A', 1000});
 
     //Use your components in straightforward ways!!!
 
     //Use filter_for to loop over more than one component registry.
-    filter_for(
-        AND_I,
+    filter_for<Position, Health>(
+        AND_Included,
         [](Position &pos, Health &hp) {
             //Output some info with Logger!
             Logger(LOGGER_INFO, MECA_SYS, "This character has a position of ("<<pos.x<<", "<<pos.y<<") and "<<hp.value<<" of HP.");
-        },
-        positions, healths
+        }
     );
 
     //Use your range based for to loop over one component registry.
     Logger(LOGGER_INFO, MECA_SYS, "Here is the list of points gained in the match:");
-    for(Rank &rank : component_iterator(ranks)) {
+    for(Rank &rank : *component_iterator<Rank>()) {
         Logger(LOGGER_INFO, MECA_SYS, rank.points);
     }
 }

@@ -42,6 +42,28 @@ For `Logger` there are four flags that you can use to categorize the output:
 - `LOGGER_ERROR`: Used to provide information of something that could create bugs.
 - `LOGGER_FATAL`: Used to provide information of something that could/will crash the program.
 
+Now that we have a little bit more confidence, we can start using the Logger features for time!
+
+`TimeShot` is used to mark a precise moment in time during the execution of your code:
+```cpp
+auto start = TimeShot();
+
+int x = 99;
+int y = 1;
+int z = x+y
+
+auto end = TimeShot();
+```
+> `start` and `end` now have the timestamps of our tiny operation!
+
+Alright, what else? Well, we can get the amount of time passed from `start` to `end`:
+```cpp
+auto duration = elapsed_time(start, end, LOGGER_SECONDS);
+Logger(LOGGER_INFO, "SUM", duration); //Now you can print out the duration of your program!
+```
+> [!NOTE]
+> You could format `duration` as `LOGGER_SECONDS`, `LOGGER_MILLI_SECONDS` or `LOGGER_MICRO_SECONDS`.
+
 ### 🧍 MECA
 **Are you tired of always having a lot of entities that your game cannot handle?**
 

@@ -26,7 +26,7 @@ int main() {
     //Another nice guy
     entityID juan = create_entity();
 
-    //Give your entities some components, registering them in your favorite componentRegistry.
+    //Give your entities some components!
     create_component<Position>(mahoma, {100,200});
     create_component<Health>(mahoma, {999});
 
@@ -36,7 +36,7 @@ int main() {
 
     //Use your components in straightforward ways!!!
 
-    //Use filter_for to loop over more than one component registry.
+    //Use filter_for to loop over more than one component type.
     filter_for<Position, Health>(
         AND_Included,
         [](Position &pos, Health &hp) {
@@ -45,9 +45,9 @@ int main() {
         }
     );
 
-    //Use your range based for to loop over one component registry.
+    //Use your range based for to loop over one component type.
     Logger(LOGGER_INFO, MECA_SYS, "Here is the list of points gained in the match:");
-    for(Rank &rank : *component_iterator<Rank>()) {
+    for(Rank &rank : component_iterator<Rank>()) {
         Logger(LOGGER_INFO, MECA_SYS, rank.points);
     }
 }

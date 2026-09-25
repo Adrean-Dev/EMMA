@@ -70,7 +70,7 @@ int main() {
         auto start_get = TimeShot();
 
         for(int i = 0; i < entities; i++) {
-            int *x = meca::get_component<int>(i);
+            int x = meca::get_component<int>(i);
         }
 
         auto end_get = TimeShot();
@@ -88,7 +88,7 @@ int main() {
     for(int a = 0; a < iterations; a++) {
         auto start_iter = TimeShot();
 
-        for(int &element : *meca::component_iterator<int>()) {
+        for(int &element : meca::component_iterator<int>()) {
             element++;
         }
 

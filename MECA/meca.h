@@ -4,6 +4,7 @@
 
 
 
+#include <assert.h>
 #include <memory>
 #include <vector>
 #include <utility>
@@ -65,8 +66,8 @@ namespace meca {
                 }
             }
 
-            T* get(entityID id) {
-                return (has(id)) ? &dense[sparse[id]] : nullptr;
+            inline T& get(entityID id) {
+                return dense[sparse[id]];
             }
 
             constexpr bool has(entityID id) {
@@ -83,6 +84,11 @@ namespace meca {
         size_t entity_count = 0;
         size_t componentType_count = 0;
 
+        //OFU flags (Only First used)
+        template<typename T>
+        inline bool type_used = false;
+
+
         //This gets a unique id from a datatype
         template<typename T>
         size_t get_componentType_id() {
@@ -90,7 +96,7 @@ namespace meca {
             return id;
         }
 
-        //This gets a raw component from a type (without handling non-existance)
+        //This gets a raw component from an entity and componentType (without handling non-existance)
         template<typename T>
         T& get_component_byType(entityID id) {
             SparseRegistry<T> *comp_reg = static_cast<SparseRegistry<T>*>(registry[get_componentType_id<T>()].get());
@@ -113,25 +119,23 @@ namespace meca {
     */
 
     /*
-    Creates a new entity in a free id.
+    Creates a new entity.
     @returns An id for new entity.
     */
-    entityID create_entity() {
-        __internal::entity_count++;
-        return __internal::entity_count-1;
+    inline entityID create_entity() {
+        return __internal::entity_count++;
     }
 
 
     //Resets an entity (deletes all its components).
     inline void reset_entity(entityID id) {
-        if((id < __internal::entity_count) && (id < __internal::bitmasks.size()) && (__internal::bitmasks[id].any())) {
-            for(size_t i = 0; i < MAX_COMPONENTS; i++) {
-                if(__internal::bitmasks[id].test(i)) {
-                    __internal::registry[i].get()->del(id);
-                }
+        assert((id < __internal::entity_count) && (id < __internal::bitmasks.size()) && (__internal::bitmasks[id].any()));
+        for(size_t i = 0; i < MAX_COMPONENTS; i++) {
+            if(__internal::bitmasks[id].test(i)) {
+                __internal::registry[i].get()->del(id);
             }
-            __internal::bitmasks[id].reset();
         }
+        __internal::bitmasks[id].reset();
     }
 
 
@@ -141,73 +145,94 @@ namespace meca {
     COMPONENTS FUNCTIONS
     ####################
     */
+    
+    //Preallocates memory for a component type (only use it before creating any component of that type)
+    template<typename T>
+    void reserve_components(size_t size, T default_val) {
+        //OFU Flag
+        if(__internal::type_used<T>) return;
+        __internal::type_used<T> = true;
+
+        size_t id = __internal::get_componentType_id<T>();
+        if(id >= __internal::registry.size()) __internal::registry.push_back(std::make_unique<__internal::SparseRegistry<T>>());
+
+        __internal::SparseRegistry<T> *reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[id].get());
+
+        reg->dense.resize(size, default_val);
+
+        for(size_t i = 0; i < size; i++) {
+            reg->sparse.push_back(i);
+            reg->compact.push_back(i);
+        }
+    }
+
 
     //Creates a new component for an entity.
     template<typename T>
     inline void create_component(entityID id, T&& component) {
-        if(id < __internal::entity_count) {
-            size_t reg_id = __internal::get_componentType_id<T>();
-            if(reg_id >= __internal::registry.size()) __internal::registry.push_back(std::make_unique<__internal::SparseRegistry<T>>());
-            
-            //Registry
-            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
-            comp_reg->insert(id, std::forward<T>(component));
+        assert(id < __internal::entity_count);
+        
+        //OFU Flag
+        __internal::type_used<T> = true;
 
-            //Bits
-            if(id >= __internal::bitmasks.size()) {
-                __internal::bitmasks.resize(id+1, 0);
-                __internal::bitmasks[id].set(reg_id);
-            } else {
-                __internal::bitmasks[id].set(reg_id);
-            }
-        } else Logger(LOGGER_WARNING, MECA_SYS, "Fail creating component! Invalid entityID: " << id);
+        size_t reg_id = __internal::get_componentType_id<T>();
+        if(reg_id >= __internal::registry.size()) __internal::registry.push_back(std::make_unique<__internal::SparseRegistry<T>>());
+        
+        //Registry
+        __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
+        comp_reg->insert(id, std::forward<T>(component));
+
+        //Bits
+        if(id >= __internal::bitmasks.size()) {
+            __internal::bitmasks.resize(id+1, 0);
+            __internal::bitmasks[id].set(reg_id);
+        } else {
+            __internal::bitmasks[id].set(reg_id);
+        }
     }
 
 
     /*
-    Gets the pointer to an entity's component.
-    @returns An entity component or nullptr (if component not found).
+    Gets an entity's component.
+    @returns A reference to the entity component.
     */
     template<typename T>
-    T* get_component(entityID id) {
-        if(id >= __internal::entity_count) return nullptr;
-
-        size_t reg_id = __internal::get_componentType_id<T>();
-        __internal::SparseRegistry<T> *comp_reg = (reg_id < __internal::registry.size()) ? static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get()) : nullptr;
-        if(comp_reg == nullptr) return nullptr;
-
-        return comp_reg->get(id);
+    inline T& get_component(entityID id) {
+        assert((id < __internal::entity_count) && (__internal::type_used<T>));
+        return static_cast<__internal::SparseRegistry<T>*>(__internal::registry[__internal::get_componentType_id<T>()].get())->get(id);
     }
 
 
     //Deletes a component from an entity.
     template<typename T>
     inline void delete_component(entityID id) {
+        assert((id < __internal::entity_count) && (__internal::type_used<T>));
+
         size_t reg_id = __internal::get_componentType_id<T>();
-        if((id < __internal::entity_count) && (reg_id < __internal::registry.size())) {
-            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
+        __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
 
-            //Bits
-            if(comp_reg->has(id)) __internal::bitmasks[id].reset(reg_id);
+        //Bits
+        if(comp_reg->has(id)) __internal::bitmasks[id].reset(reg_id);
 
-            //Registry
-            comp_reg->del(id);
-        }  else Logger(LOGGER_WARNING, MECA_SYS, "Fail deleting component! Invalid component type or entityID: " << id);
+        //Registry
+        comp_reg->del(id);
     }
 
 
     /*
-    Gives a simple pointer to a vector of components (references to component registry).
-    @returns A pointer to the internal vector of a component registry or nullptr (if not found).
+    Gives a vector of components (from one component type).
+    @returns A reference to the internal vector of a component registry.
+    @note Use it in loops, trust me ;)
     */
     template<typename T>
-    std::vector<T>* component_iterator() {
-        size_t reg_id = __internal::get_componentType_id<T>();
-        if(reg_id < __internal::registry.size()) {
-            __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[reg_id].get());
-            return (comp_reg->dense.size() > 0) ? &comp_reg->dense : nullptr;
-        }
-        return nullptr;
+    std::vector<T>& component_iterator() {
+        assert(__internal::type_used<T>);
+
+        __internal::SparseRegistry<T> *comp_reg = static_cast<__internal::SparseRegistry<T>*>(__internal::registry[__internal::get_componentType_id<T>()].get());
+
+        assert(comp_reg->dense.size() > 0);
+
+        return comp_reg->dense;
     }
 
 
@@ -218,6 +243,8 @@ namespace meca {
     */
     template<typename... Components, typename F>
     void filter_for(filter filtro, F &&function) {
+        assert(__internal::type_used<Components> && ...);
+
         //Getting the minimum component registry size
         size_t min_id = 0; //The good stuff
 
